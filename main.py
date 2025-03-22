@@ -10,6 +10,8 @@ WINDOW_WIDTH = 800
 WINDOW_HEIGHT = 600
 FONT_SIZE = 32
 FONT = pygame.font.Font(None, FONT_SIZE)
+SCROLL_SPEED = 2  # Base scroll speed
+TYPING_SCROLL_SPEED = 4  # Faster scroll speed when typing
 
 # Colors
 WHITE = (255, 255, 255)
@@ -36,9 +38,9 @@ SENTENCES = [
 class TypingGame:
     def __init__(self):
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-        pygame.display.set_caption("Typing Game - 1 Minute Challenge")
+        pygame.display.set_caption("Typing Game - Scrolling Sentences")
         self.clock = pygame.time.Clock()
-        self.current_sentence = ""
+        self.sentences = []  # List of (sentence, x_position) tuples
         self.user_input = ""
         self.score = 0
         self.start_time = 0
@@ -49,36 +51,71 @@ class TypingGame:
         self.total_characters = 0
         self.correct_characters = 0
         self.wrong_characters = 0
-        self.new_sentence()
+        self.current_sentence_index = 0
+        self.last_typing_time = 0
+        self.initialize_sentences()
 
-    def new_sentence(self):
-        self.current_sentence = random.choice(SENTENCES)
-        self.user_input = ""
-        self.start_time = time.time()
+    def initialize_sentences(self):
+        # Create initial set of sentences with their x positions
+        x = WINDOW_WIDTH
+        for _ in range(5):  # Start with 5 sentences
+            sentence = random.choice(SENTENCES)
+            self.sentences.append((sentence, x))
+            x += len(sentence) * FONT_SIZE // 2 + 100  # Add space between sentences
+
+    def add_new_sentence(self):
+        # Add a new sentence when needed
+        if self.sentences[-1][1] < WINDOW_WIDTH:
+            sentence = random.choice(SENTENCES)
+            x = self.sentences[-1][1] + len(self.sentences[-1][0]) * FONT_SIZE // 2 + 100
+            self.sentences.append((sentence, x))
 
     def update_accuracy(self):
         total = self.correct_characters + self.wrong_characters
         if total > 0:
             self.accuracy = int((self.correct_characters / total) * 100)
 
+    def check_sentence_complete(self):
+        if not self.sentences:  # Check if there are any sentences
+            return False
+            
+        if len(self.user_input) == len(self.sentences[0][0]):
+            if self.user_input == self.sentences[0][0]:
+                self.score += 1
+            self.user_input = ""
+            self.sentences.pop(0)  # Remove completed sentence
+            self.add_new_sentence()  # Add new sentence at the end
+            return True
+        return False
+
     def draw_game(self):
         self.screen.fill(BLACK)
         
-        # Draw current sentence with highlighting
-        x = WINDOW_WIDTH // 2 - (len(self.current_sentence) * FONT_SIZE // 4)
-        y = WINDOW_HEIGHT // 2 - 50
-        
-        for i, char in enumerate(self.current_sentence):
-            color = GRAY  # Default color for untyped letters
-            if i < len(self.user_input):
-                if self.user_input[i] == char:
-                    color = GREEN  # Correct letter
-                else:
-                    color = RED  # Wrong letter
-            
-            char_text = FONT.render(char, True, color)
-            self.screen.blit(char_text, (x, y))
-            x += FONT_SIZE // 2
+        # Draw all sentences
+        for sentence, x_pos in self.sentences:
+            # Only draw if sentence is visible on screen
+            if x_pos + len(sentence) * FONT_SIZE // 2 > 0:
+                y = WINDOW_HEIGHT // 2 - 50
+                current_x = x_pos
+                
+                for i, char in enumerate(sentence):
+                    color = GRAY  # Default color for untyped letters
+                    if i < len(self.user_input) and sentence == self.sentences[0][0]:
+                        if self.user_input[i] == char:
+                            color = GREEN  # Correct letter
+                        else:
+                            color = RED  # Wrong letter
+                    
+                    char_text = FONT.render(char, True, color)
+                    self.screen.blit(char_text, (current_x, y))
+                    current_x += FONT_SIZE // 2
+
+        # Draw user input below the sentences
+        if self.user_input:
+            input_y = WINDOW_HEIGHT // 2 + 50
+            input_x = WINDOW_WIDTH // 2 - (len(self.user_input) * FONT_SIZE // 4)
+            input_text = FONT.render(self.user_input, True, WHITE)
+            self.screen.blit(input_text, (input_x, input_y))
 
         # Draw score and stats
         score_text = FONT.render(f"Score: {self.score}", True, WHITE)
@@ -96,7 +133,7 @@ class TypingGame:
         self.screen.blit(time_text, (WINDOW_WIDTH - 150, 10))
 
         # Draw instructions
-        instructions = FONT.render("Type the sentence above, Press Enter to submit, Escape to quit", True, WHITE)
+        instructions = FONT.render("Type the sentences as they scroll, Escape to quit", True, WHITE)
         self.screen.blit(instructions, (WINDOW_WIDTH // 2 - instructions.get_width() // 2, WINDOW_HEIGHT - 50))
 
         pygame.display.flip()
@@ -132,7 +169,7 @@ class TypingGame:
         pygame.display.flip()
 
     def reset_game(self):
-        self.current_sentence = ""
+        self.sentences = []
         self.user_input = ""
         self.score = 0
         self.start_time = time.time()
@@ -143,10 +180,13 @@ class TypingGame:
         self.total_characters = 0
         self.correct_characters = 0
         self.wrong_characters = 0
-        self.new_sentence()
+        self.current_sentence_index = 0
+        self.last_typing_time = 0
+        self.initialize_sentences()
 
     def run(self):
         while self.game_active:
+            current_time = time.time()
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.game_active = False
@@ -157,19 +197,21 @@ class TypingGame:
                         self.reset_game()
                     elif not self.game_over:
                         if event.key == pygame.K_BACKSPACE:
-                            self.user_input = self.user_input[:-1]
-                        elif event.key == pygame.K_RETURN:
-                            if self.user_input == self.current_sentence:
-                                self.score += 1
-                                self.new_sentence()
+                            if self.user_input:  # Only remove if there's input
+                                self.user_input = self.user_input[:-1]
                         else:
                             if event.unicode.isprintable():
                                 self.user_input += event.unicode
                                 self.total_characters += 1
+                                self.last_typing_time = current_time
                                 # Check if the typed character is correct
-                                if len(self.user_input) <= len(self.current_sentence):
-                                    if self.user_input[-1] == self.current_sentence[len(self.user_input)-1]:
+                                if self.sentences and self.user_input and len(self.user_input) <= len(self.sentences[0][0]):
+                                    current_char = self.user_input[-1]
+                                    target_char = self.sentences[0][0][len(self.user_input)-1]
+                                    if current_char == target_char:
                                         self.correct_characters += 1
+                                        # Check if sentence is complete
+                                        self.check_sentence_complete()
                                     else:
                                         self.wrong_characters += 1
                                     self.update_accuracy()
@@ -180,6 +222,14 @@ class TypingGame:
                 if elapsed_time >= 60:
                     self.game_over = True
                 else:
+                    # Determine scroll speed based on typing
+                    current_scroll_speed = TYPING_SCROLL_SPEED if current_time - self.last_typing_time < 0.5 else SCROLL_SPEED
+                    
+                    # Scroll sentences
+                    for i in range(len(self.sentences)):
+                        sentence, x = self.sentences[i]
+                        self.sentences[i] = (sentence, x - current_scroll_speed)
+                    
                     # Calculate WPM
                     if elapsed_time > 0:
                         self.wpm = int((len(self.user_input) / 5) / (elapsed_time / 60))
