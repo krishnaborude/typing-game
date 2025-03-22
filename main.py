@@ -121,20 +121,21 @@ class TypingGame:
         self.current_word = ""
         self.user_input = ""
         self.score = 0
-        self.start_time = time.time()
+        self.start_time = None  # Changed to None initially
         self.game_duration = 60  # 1 minute game
         self.wpm = 0
         self.accuracy = 100
         self.game_active = True
         self.game_over = False
+        self.game_started = False  # New flag for game start state
         self.total_characters = 0
         self.correct_characters = 0
         self.wrong_characters = 0
         self.cursor_visible = True
         self.last_cursor_toggle = 0
-        self.completed_words = 0  # Total words attempted
-        self.correct_words = 0    # Words typed correctly
-        self.wrong_words = 0      # Words typed incorrectly
+        self.completed_words = 0
+        self.correct_words = 0
+        self.wrong_words = 0
         self.new_word()
 
     def new_word(self):
@@ -275,12 +276,47 @@ class TypingGame:
         
         pygame.display.flip()
 
+    def draw_start_screen(self):
+        self.screen.fill(BLACK)
+        
+        # Draw title
+        title = FONT.render("Typing Game", True, WHITE)
+        title_rect = title.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 3))
+        self.screen.blit(title, title_rect)
+        
+        # Draw start button
+        button_width = 200
+        button_height = 50
+        button_x = WINDOW_WIDTH // 2 - button_width // 2
+        button_y = WINDOW_HEIGHT // 2 - button_height // 2
+        
+        pygame.draw.rect(self.screen, WHITE, (button_x, button_y, button_width, button_height))
+        pygame.draw.rect(self.screen, BLACK, (button_x, button_y, button_width, button_height), 2)
+        
+        start_text = FONT.render("Start Game", True, BLACK)
+        text_rect = start_text.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT // 2))
+        self.screen.blit(start_text, text_rect)
+        
+        # Draw instructions
+        instructions = FONT.render("Click the button or press SPACE to start", True, WHITE)
+        instructions_rect = instructions.get_rect(center=(WINDOW_WIDTH // 2, WINDOW_HEIGHT * 2 // 3))
+        self.screen.blit(instructions, instructions_rect)
+        
+        pygame.display.flip()
+        return (button_x, button_y, button_width, button_height)  # Return button dimensions
+
+    def start_game(self):
+        self.game_started = True
+        self.start_time = time.time()
+        self.new_word()
+
     def reset_game(self):
         self.available_words = WORDS.copy()
         self.current_word = ""
         self.user_input = ""
         self.score = 0
-        self.start_time = time.time()
+        self.start_time = None
+        self.game_started = False
         self.wpm = 0
         self.accuracy = 100
         self.game_active = True
@@ -293,11 +329,25 @@ class TypingGame:
         self.completed_words = 0
         self.correct_words = 0
         self.wrong_words = 0
-        self.new_word()
 
     def run(self):
         while self.game_active:
             current_time = time.time()
+            
+            if not self.game_started and not self.game_over:
+                button_rect = self.draw_start_screen()
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        self.game_active = False
+                    elif event.type == pygame.MOUSEBUTTONDOWN:
+                        mouse_pos = pygame.mouse.get_pos()
+                        if (button_rect[0] <= mouse_pos[0] <= button_rect[0] + button_rect[2] and
+                            button_rect[1] <= mouse_pos[1] <= button_rect[1] + button_rect[3]):
+                            self.start_game()
+                    elif event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_SPACE:
+                            self.start_game()
+                continue
             
             # Update cursor blink
             if current_time - self.last_cursor_toggle >= 0.5:
@@ -323,30 +373,27 @@ class TypingGame:
                                 self.wrong_words += 1
                             self.new_word()  # Get new word when space is pressed
                     elif not self.game_over:
-                        if event.key == pygame.K_BACKSPACE:
-                            if self.user_input:  # Only remove if there's input
-                                self.user_input = self.user_input[:-1]
-                        else:
-                            if event.unicode.isprintable() and event.unicode != ' ':  # Ignore space as input
-                                self.user_input += event.unicode
-                                self.total_characters += 1
-                                # Check if the typed character is correct
-                                if len(self.user_input) <= len(self.current_word):
-                                    current_char = self.user_input[-1]
-                                    target_char = self.current_word[len(self.user_input)-1]
-                                    if current_char == target_char:
-                                        self.correct_characters += 1
-                                    else:
-                                        self.wrong_characters += 1
-                                    self.update_accuracy()
+                        # Removed backspace handling
+                        if event.unicode.isprintable() and event.unicode != ' ':  # Ignore space as input
+                            self.user_input += event.unicode
+                            self.total_characters += 1
+                            # Check if the typed character is correct
+                            if len(self.user_input) <= len(self.current_word):
+                                current_char = self.user_input[-1]
+                                target_char = self.current_word[len(self.user_input)-1]
+                                if current_char == target_char:
+                                    self.correct_characters += 1
+                                else:
+                                    self.wrong_characters += 1
+                                self.update_accuracy()
 
-            if not self.game_over:
+            if not self.game_over and self.game_started:
                 # Calculate WPM
                 elapsed_time = time.time() - self.start_time
                 if elapsed_time > 0:
                     self.wpm = int((len(self.user_input) / 5) / (elapsed_time / 60))
                 self.draw_game()
-            else:
+            elif self.game_over:
                 self.draw_results()
 
             self.clock.tick(60)
